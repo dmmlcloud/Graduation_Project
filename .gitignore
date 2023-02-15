@@ -30,3 +30,6 @@
 *.exe
 *.out
 *.app
+
+depth_estimate/checkpoints
+depth_estimate/data
