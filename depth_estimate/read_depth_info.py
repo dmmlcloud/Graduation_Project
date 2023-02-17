@@ -107,22 +107,8 @@ def single_gpu_depth(model,
 
     return results
 
-def main():
-    args = parse_args()
-
-    assert args.out or args.show or args.show_dir, \
-        ('Please specify at least one operation (save/eval/format/show the '
-         'results / save the results) with the argument "--out", "--eval"'
-         ', "--format-only", "--show" or "--show-dir"')
-
-    if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
-        raise ValueError('The output file must be a pkl file.')
-    
-    if args.out:
-        print(os.path.dirname(args.out))
-        mmcv.mkdir_or_exist(os.path.dirname(args.out))
-    
-    cfg = mmcv.Config.fromfile(args.config)
+def main(config_file, checkpoint_file, show, show_dir):
+    cfg = mmcv.Config.fromfile(config_file)
     # set cudnn_benchmark
     if cfg.get('cudnn_benchmark', False):
         torch.backends.cudnn.benchmark = True
@@ -151,7 +137,7 @@ def main():
         wrap_fp16_model(model)
 
     # for other models
-    checkpoint = load_checkpoint(model, args.checkpoint, map_location='cpu')
+    checkpoint = load_checkpoint(model, checkpoint_file, map_location='cpu')
 
     # clean gpu memory when starting a new evaluation.
     torch.cuda.empty_cache()
@@ -160,11 +146,27 @@ def main():
     depth_results = single_gpu_depth(
         model,
         data_loader,
-        args.show,
-        args.show_dir)
+        show,
+        show_dir)
     print("\n\ndepth results showing below:")
     for index, depth in enumerate(depth_results):
         print("(", index+1, "): ", depth)
+    print(show)
+    return depth_results
 
 if __name__ == '__main__':
-    main()
+    args = parse_args()
+    assert args.out or args.show or args.show_dir, \
+        ('Please specify at least one operation (save/eval/format/show the '
+         'results / save the results) with the argument "--out", "--eval"'
+         ', "--format-only", "--show" or "--show-dir"')
+
+    if args.out is not None and not args.out.endswith(('.pkl', '.pickle')):
+        raise ValueError('The output file must be a pkl file.')
+    
+    if args.out:
+        print(os.path.dirname(args.out))
+        mmcv.mkdir_or_exist(os.path.dirname(args.out))
+
+    print(args.show)
+    main(args.config, args.checkpoint, args.show, args.show_dir)

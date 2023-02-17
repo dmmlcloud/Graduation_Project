@@ -315,11 +315,25 @@ set(COLMAP_INTERNAL_LIBRARIES
     vlfeat
 )
 
+##########################
+# Add python module
+##########################
+
+set(PYTHON_CPP_INCLUDE_DIR "/home/lzy/anaconda3/envs/MDE/include/python3.7m")
+set(PYTHON_CPP_LIBRARIES "/home/lzy/anaconda3/envs/MDE/lib/libpython3.7m.so")
+set(PYTHON_CPP_LIBRARIES_DIR "/home/lzy/anaconda3/envs/MDE/lib")
+
+
+list(APPEND COLMAP_INCLUDE_DIRS ${PYTHON_CPP_INCLUDE_DIR})
+list(APPEND COLMAP_EXTERNAL_LIBRARIES ${PYTHON_CPP_LIBRARIES})
+list(APPEND COLMAP_LINK_DIRS ${PYTHON_CPP_LIBRARIES_DIR})
+
 include_directories(
     lib
     src
     ${COLMAP_INCLUDE_DIRS}
 )
+
 
 link_directories(${COLMAP_LINK_DIRS})
 

@@ -50,6 +50,7 @@
 #include "ui/main_window.h"
 #include "util/opengl_utils.h"
 #include "util/version.h"
+#include "tools/depth_estimation.h"
 
 using namespace colmap;
 
@@ -2062,6 +2063,26 @@ int RunVocabTreeRetriever(int argc, char** argv) {
   return EXIT_SUCCESS;
 }
 
+
+int RunDepthEstimation(int argc, char** argv) {
+  std::string configPath;
+  std::string checkpointPath;
+  bool showResult;
+  std::string showDir;
+
+  OptionManager options;
+  options.AddRequiredOption("config_path", &configPath);
+  options.AddRequiredOption("checkpoint_path", & checkpointPath);
+  options.AddRequiredOption("show", &showResult);
+  options.AddRequiredOption("show_dir", &showDir);
+
+  DepthEstimation* depthEstimate = new DepthEstimation(configPath, checkpointPath, showResult, showDir);
+
+  depthEstimate->EstimateDepth();
+
+  return EXIT_SUCCESS;
+}
+
 typedef std::function<int(int, char**)> command_func_t;
 
 int ShowHelp(
@@ -2150,6 +2171,9 @@ int main(int argc, char** argv) {
   commands.emplace_back("vocab_tree_builder", &RunVocabTreeBuilder);
   commands.emplace_back("vocab_tree_matcher", &RunVocabTreeMatcher);
   commands.emplace_back("vocab_tree_retriever", &RunVocabTreeRetriever);
+
+  // new modules
+  commands.emplace_back("depth_estimation", &RunDepthEstimation);
 
   if (argc == 1) {
     return ShowHelp(commands);

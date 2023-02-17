@@ -31,4 +31,8 @@
 
 set(FOLDER_NAME "tools")
 
+COLMAP_ADD_SOURCES(
+    depth_estimation.h depth_estimation.cc
+)
+
 # COLMAP_ADD_EXECUTABLE(example example.cc)
