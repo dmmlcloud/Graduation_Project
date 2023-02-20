@@ -31,8 +31,10 @@
 *.out
 *.app
 
-depth_estimate/checkpoints
-depth_estimate/data
-depth_estimate/results
-
+colmap/checkpoints
+colmap/data
+colmap/depth_results
 colmap/build
+
+.vscode
+__pycache__

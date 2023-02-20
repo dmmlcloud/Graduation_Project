@@ -2067,16 +2067,20 @@ int RunVocabTreeRetriever(int argc, char** argv) {
 int RunDepthEstimation(int argc, char** argv) {
   std::string configPath;
   std::string checkpointPath;
-  bool showResult;
   std::string showDir;
 
   OptionManager options;
   options.AddRequiredOption("config_path", &configPath);
   options.AddRequiredOption("checkpoint_path", & checkpointPath);
-  options.AddRequiredOption("show", &showResult);
   options.AddRequiredOption("show_dir", &showDir);
-
-  DepthEstimation* depthEstimate = new DepthEstimation(configPath, checkpointPath, showResult, showDir);
+  options.Parse(argc, argv);
+  // ///////// test /////////
+  // std::cout << "ConfigPath: " << configPath << std::endl;
+  // std::cout << "CheckpointPath: " << checkpointPath << std::endl;
+  // std::cout << "Show: " << showResult << std::endl;
+  // std::cout << "ShowDir: " << showDir << std::endl;
+  // ////////////////////////
+  DepthEstimation* depthEstimate = new DepthEstimation(configPath, checkpointPath, showDir);
 
   depthEstimate->EstimateDepth();
 
