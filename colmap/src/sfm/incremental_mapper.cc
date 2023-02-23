@@ -665,6 +665,153 @@ IncrementalMapper::AdjustLocalBundle(
   return report;
 }
 
+IncrementalMapper::LocalBundleAdjustmentReport
+IncrementalMapper::AdjustLocalBundleConstantPoint(
+    const Options& options, const BundleAdjustmentOptions& ba_options,
+    const IncrementalTriangulator::Options& tri_options, const image_t image_id,
+    const std::unordered_set<point3D_t>& point3D_ids) {
+  CHECK_NOTNULL(reconstruction_);
+  CHECK(options.Check());
+
+  LocalBundleAdjustmentReport report;
+
+  // Find images that have most 3D points with given image in common.
+  const std::vector<image_t> local_bundle = FindLocalBundle(options, image_id);
+
+  // Do the bundle adjustment only if there is any connected images.
+  if (local_bundle.size() > 0) {
+    BundleAdjustmentConfig ba_config;
+    ba_config.AddImage(image_id);
+    for (const image_t local_image_id : local_bundle) {
+      ba_config.AddImage(local_image_id);
+    }
+
+    // Fix the existing images, if option specified.
+    if (options.fix_existing_images) {
+      for (const image_t local_image_id : local_bundle) {
+        if (existing_image_ids_.count(local_image_id)) {
+          ba_config.SetConstantPose(local_image_id);
+        }
+      }
+    }
+
+
+    // Constant point
+    if (options.ba_constant_point) {
+      // at last one
+      int const_point_image_num = std::max(1, local_bundle.size() / 5);
+      for(int i = 0; i < const_point_image_num; ++i) {
+        const image_t constant_image_id = local_bundle[i];
+        const Image& image = reconstruction_->Image(constant_image_id);
+        const auto& const_point2D = image.Points2D();
+        // find 3D point which has most tracks
+        std::unordered_map<size_t, point3D_t> const_point3Ds;
+        for(Point2D& point2D : const_point2D) {
+          // TODO: consider point does not have track
+          if(!point2D.HasPoint3D()) {
+            continue;
+          }
+          point3D_t point3DId = point2D.Point3DId();
+          const Point3D& point3D reconstruction_->Point3D(point2D.Point3DId());
+          size_t track_length = point3D.Track().Length();
+          const_point3Ds[track_length] = point3DId;
+        }
+        int const_point_num = std::max(1, len(const_point3Ds) / 1000);
+        int index = 0;
+        for(const auto& const_point3D : const_point3Ds) {
+          if(index++ < const_point_num) {
+            break;
+          }
+          ba_config.AddConstantPoint(const_point3D.second);
+        }
+        ba_config.SetConstantPose(constant_image_id);
+      }
+    }
+
+    // Determine which cameras to fix, when not all the registered images
+    // are within the current local bundle.
+    std::unordered_map<camera_t, size_t> num_images_per_camera;
+    for (const image_t image_id : ba_config.Images()) {
+      const Image& image = reconstruction_->Image(image_id);
+      num_images_per_camera[image.CameraId()] += 1;
+    }
+
+    for (const auto& camera_id_and_num_images_pair : num_images_per_camera) {
+      const size_t num_reg_images_for_camera =
+          num_reg_images_per_camera_.at(camera_id_and_num_images_pair.first);\
+      if (camera_id_and_num_images_pair.second < num_reg_images_for_camera) {
+        ba_config.SetConstantCamera(camera_id_and_num_images_pair.first);
+      }
+    }
+
+    // Fix 7 DOF to avoid scale/rotation/translation drift in bundle adjustment.
+    if (local_bundle.size() == 1) {
+      ba_config.SetConstantPose(local_bundle[0]);
+      ba_config.SetConstantTvec(image_id, {0});
+    } else if (local_bundle.size() > 1) {
+      const image_t image_id1 = local_bundle[local_bundle.size() - 1];
+      const image_t image_id2 = local_bundle[local_bundle.size() - 2];
+      ba_config.SetConstantPose(image_id1);
+      if (!options.fix_existing_images ||
+          !existing_image_ids_.count(image_id2)) {
+        ba_config.SetConstantTvec(image_id2, {0});
+      }
+    } 
+
+
+    // Make sure, we refine all new and short-track 3D points, no matter if
+    // they are fully contained in the local image set or not. Do not include
+    // long track 3D points as they are usually already very stable and adding
+    // to them to bundle adjustment and track merging/completion would slow
+    // down the local bundle adjustment significantly.
+    std::unordered_set<point3D_t> variable_point3D_ids;
+    for (const point3D_t point3D_id : point3D_ids) {
+      const Point3D& point3D = reconstruction_->Point3D(point3D_id);
+      const size_t kMaxTrackLength = 15;
+      if (!point3D.HasError() || point3D.Track().Length() <= kMaxTrackLength) {
+        ba_config.AddVariablePoint(point3D_id);
+        variable_point3D_ids.insert(point3D_id);
+      }
+    }
+
+    // Adjust the local bundle.
+    BundleAdjuster bundle_adjuster(ba_options, ba_config);
+    bundle_adjuster.Solve(reconstruction_);
+
+    report.num_adjusted_observations =
+        bundle_adjuster.Summary().num_residuals / 2;
+
+    // Merge refined tracks with other existing points.
+    report.num_merged_observations =
+        triangulator_->MergeTracks(tri_options, variable_point3D_ids);
+    // Complete tracks that may have failed to triangulate before refinement
+    // of camera pose and calibration in bundle-adjustment. This may avoid
+    // that some points are filtered and it helps for subsequent image
+    // registrations.
+    report.num_completed_observations =
+        triangulator_->CompleteTracks(tri_options, variable_point3D_ids);
+    report.num_completed_observations +=
+        triangulator_->CompleteImage(tri_options, image_id);
+  }
+
+  // Filter both the modified images and all changed 3D points to make sure
+  // there are no outlier points in the model. This results in duplicate work as
+  // many of the provided 3D points may also be contained in the adjusted
+  // images, but the filtering is not a bottleneck at this point.
+  std::unordered_set<image_t> filter_image_ids;
+  filter_image_ids.insert(image_id);
+  filter_image_ids.insert(local_bundle.begin(), local_bundle.end());
+  report.num_filtered_observations = reconstruction_->FilterPoints3DInImages(
+      options.filter_max_reproj_error, options.filter_min_tri_angle,
+      filter_image_ids);
+  report.num_filtered_observations += reconstruction_->FilterPoints3D(
+      options.filter_max_reproj_error, options.filter_min_tri_angle,
+      point3D_ids);
+
+  return report;
+}
+
+
 bool IncrementalMapper::AdjustGlobalBundle(
     const Options& options, const BundleAdjustmentOptions& ba_options) {
   CHECK_NOTNULL(reconstruction_);

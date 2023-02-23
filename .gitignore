@@ -35,6 +35,8 @@ colmap/checkpoints
 colmap/data
 colmap/depth_results
 colmap/build
+colmap/colmap
+test
 
 .vscode
 __pycache__

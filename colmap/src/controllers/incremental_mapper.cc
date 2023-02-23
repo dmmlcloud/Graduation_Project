@@ -79,7 +79,7 @@ void IterativeLocalRefinement(const IncrementalMapperOptions& options,
                               IncrementalMapper* mapper) {
   auto ba_options = options.LocalBundleAdjustment();
   for (int i = 0; i < options.ba_local_max_refinements; ++i) {
-    const auto report = mapper->AdjustLocalBundle(
+    const auto report = mapper->AdjustLocalBundleConstantPoint(
         options.Mapper(), ba_options, options.Triangulation(), image_id,
         mapper->GetModifiedPoints3D());
     std::cout << "  => Merged observations: " << report.num_merged_observations
@@ -197,6 +197,7 @@ IncrementalMapper::Options IncrementalMapperOptions::Mapper() const {
   options.num_threads = num_threads;
   options.local_ba_num_images = ba_local_num_images;
   options.fix_existing_images = fix_existing_images;
+  options.ba_constant_point = ba_constant_point;
   return options;
 }
 

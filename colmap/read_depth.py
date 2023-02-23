@@ -35,6 +35,10 @@ def replace_str(s):
     new_str = s.replace('/', '_')
     return new_str
 
+def deletePre(s):
+    strlist = s.split('/')
+    return strlist[len(strlist) - 1]
+
 def single_gpu_depth(model,
                     data_loader,
                     show=False,
@@ -73,6 +77,7 @@ def single_gpu_depth(model,
     # we use batch_sampler to get correct data idx
     loader_indices = data_loader.batch_sampler
     results = []
+    file_names = []
     for _, data in zip(loader_indices, data_loader):
 
         with torch.no_grad():
@@ -102,10 +107,11 @@ def single_gpu_depth(model,
                     result_depth,
                     show=show,
                     out_file=out_file)
+        file_names.append(deletePre(img_metas[0]['ori_filename']))
         results.append(result_depth)
         prog_bar.update()
 
-    return results
+    return results, file_names
 
 def depth_estimate(config_file, checkpoint_file, show_dir):
     cfg = mmcv.Config.fromfile(config_file)
@@ -142,14 +148,15 @@ def depth_estimate(config_file, checkpoint_file, show_dir):
     torch.cuda.empty_cache()
 
     model = MMDataParallel(model, device_ids=[0])
-    depth_results = single_gpu_depth(
+    depth_results, file_names = single_gpu_depth(
         model,
         data_loader,
         False,
         show_dir)
-    file_path =  show_dir + "/depth_info.txt"
-    with open(file_path, 'w') as f:
-        for index, depth in enumerate(depth_results):
+
+    for index, depth in enumerate(depth_results):
+        file_path = show_dir + "/" + file_names[index]
+        with open(file_path, 'w') as f:
             depth_lists = depth[0].tolist()
             for info in depth_lists:
                 for list in info:

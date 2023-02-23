@@ -119,6 +119,9 @@ class IncrementalMapper {
     // If reconstruction is provided as input, fix the existing image poses.
     bool fix_existing_images = false;
 
+    // If reconstruction provide constant point
+    bool ba_constant_point = false;
+
     // Number of threads.
     int num_threads = -1;
 
@@ -202,6 +205,11 @@ class IncrementalMapper {
   // connected to the reference image, their observing images are set as
   // constant in the adjustment.
   LocalBundleAdjustmentReport AdjustLocalBundle(
+      const Options& options, const BundleAdjustmentOptions& ba_options,
+      const IncrementalTriangulator::Options& tri_options,
+      const image_t image_id, const std::unordered_set<point3D_t>& point3D_ids);
+
+  LocalBundleAdjustmentReport AdjustLocalBundleConstantPoint(
       const Options& options, const BundleAdjustmentOptions& ba_options,
       const IncrementalTriangulator::Options& tri_options,
       const image_t image_id, const std::unordered_set<point3D_t>& point3D_ids);

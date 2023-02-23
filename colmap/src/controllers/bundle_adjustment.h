@@ -51,6 +51,17 @@ class BundleAdjustmentController : public Thread {
   Reconstruction* reconstruction_;
 };
 
+class BundleAdjustmentConstantPointController : public Thread {
+  public:
+    BundleAdjustmentConstantPointController(const OptionManager& options,
+                                            Reconstruction* reconstruction);
+  private:
+    void Run();
+
+    const OptionManager options_;
+    Reconstruction* reconstruction_;
+}
+
 }  // namespace colmap
 
 #endif  // COLMAP_SRC_CONTROLLERS_BUNDLE_ADJUSTMENT_H_

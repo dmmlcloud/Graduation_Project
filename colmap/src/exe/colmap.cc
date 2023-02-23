@@ -2070,6 +2070,7 @@ int RunDepthEstimation(int argc, char** argv) {
   std::string showDir;
 
   OptionManager options;
+  options.AddDatabaseOptions();
   options.AddRequiredOption("config_path", &configPath);
   options.AddRequiredOption("checkpoint_path", & checkpointPath);
   options.AddRequiredOption("show_dir", &showDir);
@@ -2080,9 +2081,131 @@ int RunDepthEstimation(int argc, char** argv) {
   // std::cout << "Show: " << showResult << std::endl;
   // std::cout << "ShowDir: " << showDir << std::endl;
   // ////////////////////////
-  DepthEstimation* depthEstimate = new DepthEstimation(configPath, checkpointPath, showDir);
+  DepthEstimation* depthEstimate = new DepthEstimation(configPath, checkpointPath, showDir, options.database_path);
 
-  depthEstimate->EstimateDepth();
+  Database database(*options.database_path);
+  auto images = database.ReadAllImages();
+  depthEstimate->EstimateDepth(images);
+
+  return EXIT_SUCCESS;
+}
+
+int RunBundleAdjusterConstant(int argc, char** argv) {
+  std::string input_path;
+  std::string output_path;
+
+  OptionManager options;
+  options.AddRequiredOption("input_path", &input_path);
+  options.AddRequiredOption("output_path", &output_path);
+  options.AddBundleAdjustmentOptions();
+  options.Parse(argc, argv);
+
+  if (!ExistsDir(input_path)) {
+    std::cerr << "ERROR: `input_path` is not a directory" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (!ExistsDir(output_path)) {
+    std::cerr << "ERROR: `output_path` is not a directory" << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  Reconstruction reconstruction;
+  reconstruction.Read(input_path);
+
+  BundleAdjustmentConstantPointController ba_controller(options, &reconstruction);
+  ba_controller.Start();
+  ba_controller.Wait();
+
+  reconstruction.Write(output_path);
+
+  return EXIT_SUCCESS;
+}
+
+// TODO: add constant point options( modify incremental reconstruction controller )
+int RunAutomaticReconstructorConstantPoint(int argc, char** argv) {
+  AutomaticReconstructionController::Options reconstruction_options;
+  std::string data_type = "individual";
+  std::string quality = "high";
+  std::string mesher = "poisson";
+
+  OptionManager options;
+  options.AddRequiredOption("workspace_path",
+                            &reconstruction_options.workspace_path);
+  options.AddRequiredOption("image_path", &reconstruction_options.image_path);
+  options.AddDefaultOption("mask_path", &reconstruction_options.mask_path);
+  options.AddDefaultOption("vocab_tree_path",
+                           &reconstruction_options.vocab_tree_path);
+  options.AddDefaultOption("data_type", &data_type,
+                           "{individual, video, internet}");
+  options.AddDefaultOption("quality", &quality, "{low, medium, high, extreme}");
+  options.AddDefaultOption("camera_model",
+                           &reconstruction_options.camera_model);
+  options.AddDefaultOption("single_camera",
+                           &reconstruction_options.single_camera);
+  options.AddDefaultOption("sparse", &reconstruction_options.sparse);
+  options.AddDefaultOption("dense", &reconstruction_options.dense);
+  options.AddDefaultOption("mesher", &mesher, "{poisson, delaunay}");
+  options.AddDefaultOption("num_threads", &reconstruction_options.num_threads);
+  options.AddDefaultOption("use_gpu", &reconstruction_options.use_gpu);
+  options.AddDefaultOption("gpu_index", &reconstruction_options.gpu_index);
+  options.Parse(argc, argv);
+
+  StringToLower(&data_type);
+  if (data_type == "individual") {
+    reconstruction_options.data_type =
+        AutomaticReconstructionController::DataType::INDIVIDUAL;
+  } else if (data_type == "video") {
+    reconstruction_options.data_type =
+        AutomaticReconstructionController::DataType::VIDEO;
+  } else if (data_type == "internet") {
+    reconstruction_options.data_type =
+        AutomaticReconstructionController::DataType::INTERNET;
+  } else {
+    LOG(FATAL) << "Invalid data type provided";
+  }
+
+  StringToLower(&quality);
+  if (quality == "low") {
+    reconstruction_options.quality =
+        AutomaticReconstructionController::Quality::LOW;
+  } else if (quality == "medium") {
+    reconstruction_options.quality =
+        AutomaticReconstructionController::Quality::MEDIUM;
+  } else if (quality == "high") {
+    reconstruction_options.quality =
+        AutomaticReconstructionController::Quality::HIGH;
+  } else if (quality == "extreme") {
+    reconstruction_options.quality =
+        AutomaticReconstructionController::Quality::EXTREME;
+  } else {
+    LOG(FATAL) << "Invalid quality provided";
+  }
+
+  StringToLower(&mesher);
+  if (mesher == "poisson") {
+    reconstruction_options.mesher =
+        AutomaticReconstructionController::Mesher::POISSON;
+  } else if (mesher == "delaunay") {
+    reconstruction_options.mesher =
+        AutomaticReconstructionController::Mesher::DELAUNAY;
+  } else {
+    LOG(FATAL) << "Invalid mesher provided";
+  }
+
+  ReconstructionManager reconstruction_manager;
+
+  if (reconstruction_options.use_gpu && kUseOpenGL) {
+    QApplication app(argc, argv);
+    AutomaticReconstructionController controller(reconstruction_options,
+                                                 &reconstruction_manager);
+    RunThreadWithOpenGLContext(&controller);
+  } else {
+    AutomaticReconstructionController controller(reconstruction_options,
+                                                 &reconstruction_manager);
+    controller.Start();
+    controller.Wait();
+  }
 
   return EXIT_SUCCESS;
 }
@@ -2178,6 +2301,8 @@ int main(int argc, char** argv) {
 
   // new modules
   commands.emplace_back("depth_estimation", &RunDepthEstimation);
+  commands.emplace_back("bundle_adjuster_constant", &RunBundleAdjusterConstant);
+  commands.emplace_back("automatic_reconstructor_constant_point", &RunAutomaticReconstructorConstantPoint);
 
   if (argc == 1) {
     return ShowHelp(commands);
